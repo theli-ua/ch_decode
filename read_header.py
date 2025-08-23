@@ -1,8 +1,9 @@
 import struct
 from pathlib import Path
 import zlib
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, List
 from enum import IntFlag
+import argparse
 
 class ContentFlags(IntFlag):
     NONE = 0
@@ -26,7 +27,7 @@ def hexdump(data, offset=0, length=None, width=16):
     
     return '\n'.join(result)
 
-def swap_byte_order_u64(value):
+def swap_byte_order_u64(value: int) -> int:
     return struct.unpack("<Q", struct.pack(">Q", value))[0]
 
 def transform_key(input_key, generator_key):
@@ -38,16 +39,15 @@ def transform_key(input_key, generator_key):
 def parse_song_metadata(header_data: bytes, offset: int = 4) -> Tuple[Dict[str, Any], int]:
     metadata = {}
     
-    # Read strings with correct field names
     string_fields = [
-        ('chart_file', 'Chart File'),    # notes.mid
-        ('song_name', 'Song Name'),      # Moonhunter
-        ('artist', 'Artist'),            # Echoflesh
-        ('album', 'Album'),             # Moonhunter (Single)
-        ('genre', 'Genre'),             # Progressive Rock
-        ('charter', 'Charter'),         # Drihscol
-        ('year', 'Year'),               # 2020
-        ('additional_info', 'Additional Info')  # A spooky song...
+        ('chart_file', 'Chart File'),
+        ('song_name', 'Song Name'),
+        ('artist', 'Artist'),
+        ('album', 'Album'),
+        ('genre', 'Genre'),
+        ('charter', 'Charter'),
+        ('year', 'Year'),
+        ('additional_info', 'Additional Info')
     ]
     
     for field, display_name in string_fields:
@@ -57,7 +57,6 @@ def parse_song_metadata(header_data: bytes, offset: int = 4) -> Tuple[Dict[str, 
         offset += length
         metadata[field] = {'value': value, 'display': display_name}
 
-    # Read difficulty values (signed bytes)
     diff_fields = [
         ('diff_band', 'Band'),
         ('diff_guitar', 'Guitar'),
@@ -80,14 +79,12 @@ def parse_song_metadata(header_data: bytes, offset: int = 4) -> Tuple[Dict[str, 
         }
         offset += 1
 
-    # Read song length
     metadata['song_length'] = {
         'value': struct.unpack('<I', header_data[offset:offset+4])[0],
         'display': 'Song Length'
     }
     offset += 4
 
-    # Read source string
     length = struct.unpack('<I', header_data[offset:offset+4])[0]
     offset += 4
     metadata['source'] = {
@@ -96,127 +93,157 @@ def parse_song_metadata(header_data: bytes, offset: int = 4) -> Tuple[Dict[str, 
     }
     offset += length
 
-    # Unknown integers
-  
-    metadata['unknown_int1'] = {
-        'value': struct.unpack('<I', header_data[offset:offset+4])[0],
-        'display': 'Unknown Int 1'
-    }
-    offset += 4
-    
-    metadata['unknown_int2'] = {
-        'value': struct.unpack('<I', header_data[offset:offset+4])[0],
-        'display': 'Unknown Int 2'
-    }
-    offset += 4
+    for i in range(1, 4):
+        metadata[f'unknown_int{i}'] = {
+            'value': struct.unpack('<I', header_data[offset:offset+4])[0],
+            'display': f'Unknown Int {i}'
+        }
+        offset += 4
 
-    metadata['unknown_int3'] = {
-        'value': struct.unpack('<I', header_data[offset:offset+4])[0],
-        'display': 'Unknown Int 3'
-    }
-    offset += 4
-
-    # Read 16-byte identifier
     metadata['identifier'] = {
         'value': header_data[offset:offset+16],
         'display': 'Identifier'
     }
     offset += 16
 
-    # Read 8-byte long (chart data size)
-    metadata['chart_data_size'] = {
+    return metadata, offset
+
+def parse_additional_data(header_data: bytes, offset: int) -> Tuple[Dict[str, Any], int]:
+    additional = {}
+    
+    additional['chart_data_size'] = {
         'value': struct.unpack('<Q', header_data[offset:offset+8])[0],
         'display': 'Chart Data Size'
     }
     offset += 8
 
-    # Read 4-byte int (instrument count)
-    metadata['instrument_count'] = {
+    additional['instrument_count'] = {
         'value': struct.unpack('<I', header_data[offset:offset+4])[0],
         'display': 'Instrument Count'
     }
     offset += 4
 
-    # Read content flags (1 byte)
     content_flags = ContentFlags(struct.unpack('B', header_data[offset:offset+1])[0])
-    metadata['content_flags'] = {
+    additional['content_flags'] = {
         'value': content_flags,
         'display': 'Content Flags'
     }
     offset += 1
 
-    # Read difficulties present count (4 bytes)
-    metadata['difficulties_present'] = {
+    additional['image_count'] = {
         'value': struct.unpack('<I', header_data[offset:offset+4])[0],
-        'display': 'Difficulties Present'
+        'display': 'Image Count'
     }
     offset += 4
 
-    # Read optional content offsets based on flags
     if ContentFlags.ALBUM_ART in content_flags:
-        metadata['album_art_offset'] = {
+        additional['album_art_index'] = {
             'value': struct.unpack('<I', header_data[offset:offset+4])[0],
-            'display': 'Album Art Offset'
+            'display': 'Album Art Index'
         }
         offset += 4
 
     if ContentFlags.BACKGROUND in content_flags:
-        metadata['background_offset'] = {
+        additional['background_index'] = {
             'value': struct.unpack('<I', header_data[offset:offset+4])[0],
-            'display': 'Background Offset'
+            'display': 'Background Index'
         }
         offset += 4
 
-    return metadata, offset
+    return additional, offset
 
-def print_metadata(metadata: Dict[str, Any]):
+def write_song_ini(metadata: Dict[str, Any], output_dir: Path):
+    ini_path = output_dir / "song.ini"
+    with open(ini_path, "w", encoding='utf-8') as f:
+        f.write("[Song]\n")
+        f.write(f"name = {metadata['song_name']['value']}\n")
+        f.write(f"artist = {metadata['artist']['value']}\n")
+        f.write(f"album = {metadata['album']['value']}\n")
+        f.write(f"genre = {metadata['genre']['value']}\n")
+        f.write(f"charter = {metadata['charter']['value']}\n")
+        f.write(f"year = {metadata['year']['value']}\n")
+        f.write(f"song_length = {metadata['song_length']['value']}\n")
+        
+        # Write difficulty values
+        for field, data in metadata.items():
+            if field.startswith('diff_'):
+                diff_name = field[5:].replace('ghl', '_ghl')  # Format difficulty names
+                if data['value'] >= 0:  # Only write if difficulty is present
+                    f.write(f"diff_{diff_name} = {data['value']}\n")
+
+def extract_images(image_data: List[bytes], additional: Dict[str, Any], output_dir: Path):
+    content_flags = additional['content_flags']['value']
+    
+    if ContentFlags.ALBUM_ART in content_flags:
+        art_index = additional['album_art_index']['value']
+        art_data = image_data[art_index]
+        with open(output_dir / "cover.png", "wb") as f:
+            f.write(art_data)
+            
+    if ContentFlags.BACKGROUND in content_flags:
+        bg_index = additional['background_index']['value']
+        bg_data = image_data[bg_index]
+        with open(output_dir / "background.png", "wb") as f:
+            f.write(bg_data)
+
+def extract_all(result: Dict[str, Any], output_dir: Path):
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Write song.ini
+    write_song_ini(result['metadata'], output_dir)
+    
+    # Write chart file
+    chart_filename = result['metadata']['chart_file']['value']
+    with open(output_dir / chart_filename, "wb") as f:
+        f.write(result['chart_data'])
+    
+    # Extract images if present
+    if result['image_data']:
+        extract_images(result['image_data'], result['additional'], output_dir)
+
+def print_metadata(metadata: Dict[str, Any], additional: Dict[str, Any]):
     print("\nSong Metadata:")
     print("-" * 75)
     
-    # Print basic song info
     print("\nBasic Info:")
     basic_fields = ['chart_file', 'song_name', 'artist', 'album', 'genre', 'charter', 'year', 'additional_info']
     for field in basic_fields:
         if field in metadata:
             print(f"{metadata[field]['display']:15}: {metadata[field]['value']}")
     
-    # Print difficulty ratings
     print("\nDifficulty Ratings:")
     diff_fields = [f for f in metadata.keys() if f.startswith('diff_')]
     for field in diff_fields:
         print(f"{metadata[field]['display']:15}: {metadata[field]['value']}")
     
-    # Print technical details
     print("\nTechnical Details:")
     song_length_ms = metadata['song_length']['value']
     print(f"{metadata['song_length']['display']:15}: {song_length_ms} ms ({song_length_ms/1000:.2f} seconds)")
     print(f"{metadata['source']['display']:15}: {metadata['source']['value']}")
-    print(f"{metadata['unknown_int1']['display']:15}: {metadata['unknown_int1']['value']}")
-    print(f"{metadata['unknown_int2']['display']:15}: {metadata['unknown_int2']['value']}")
-    print(f"{metadata['unknown_int3']['display']:15}: {metadata['unknown_int3']['value']}")
+    for i in range(1, 4):
+        field = f'unknown_int{i}'
+        print(f"{metadata[field]['display']:15}: {metadata[field]['value']}")
     print(f"{metadata['identifier']['display']:15}: {metadata['identifier']['value'].hex()}")
     
-    # Print chart and instrument info
     print("\nChart & Instrument Info:")
-    print(f"{metadata['chart_data_size']['display']:15}: {metadata['chart_data_size']['value']} bytes")
-    print(f"{metadata['instrument_count']['display']:15}: {metadata['instrument_count']['value']}")
+    print(f"{additional['chart_data_size']['display']:15}: {additional['chart_data_size']['value']} bytes")
+    print(f"{additional['instrument_count']['display']:15}: {additional['instrument_count']['value']}")
 
-    # Print content flags and offsets
     print("\nContent Info:")
-    flags = metadata['content_flags']['value']
-    print(f"{metadata['content_flags']['display']:15}: {flags.name} ({flags.value})")
+    flags = additional['content_flags']['value']
+    print(f"{additional['content_flags']['display']:15}: {flags.name} ({flags.value})")
+    print(f"{additional['image_count']['display']:15}: {additional['image_count']['value']}")
     
-    if 'album_art_offset' in metadata:
-        print(f"{metadata['album_art_offset']['display']:15}: {metadata['album_art_offset']['value']}")
-    if 'background_offset' in metadata:
-        print(f"{metadata['background_offset']['display']:15}: {metadata['background_offset']['value']}")
-    
-    print(f"{metadata['difficulties_present']['display']:15}: {metadata['difficulties_present']['value']}")
+    if 'album_art_index' in additional:
+        print(f"{additional['album_art_index']['display']:15}: {additional['album_art_index']['value']}")
+    if 'background_index' in additional:
+        print(f"{additional['background_index']['display']:15}: {additional['background_index']['value']}")
 
 def print_arrays(result: Dict[str, Any]):
-    print("\nSection Sizes:")
-    for i, size in enumerate(result['section_sizes']):
-        print(f"Section {i}: {size} bytes")
+    if result['image_sizes']:
+        print("\nImage Data Sizes:")
+        for i, size in enumerate(result['image_sizes']):
+            print(f"Image {i}: {size} bytes")
     
     print("\nInstrument Data:")
     for i, (offset, size) in enumerate(zip(result['instrument_offsets'], result['instrument_sizes'])):
@@ -226,23 +253,17 @@ def print_arrays(result: Dict[str, Any]):
 
 def read_song_header(filepath: str) -> Dict[str, Any]:
     with open(filepath, 'rb') as f:
-        # Read encryption keys
         key1 = swap_byte_order_u64(struct.unpack('<Q', f.read(8))[0])
         compressed_size = transform_key(struct.unpack('<Q', f.read(8))[0], key1)
         
         print(f"Header size (key2): {compressed_size}")
         
-        # Read compressed header
         compressed_header = f.read(compressed_size)
-        
-        # Decompress header using raw deflate
         decompressor = zlib.decompressobj(-15)
         header_data = decompressor.decompress(compressed_header)
         decompressed_size = len(header_data)
         
-        # Read file version (uint32)
         file_version = struct.unpack('<I', header_data[:4])[0]
-        
         print(f"\nFile version: {file_version}")
         
         if file_version != 20210228:
@@ -252,54 +273,63 @@ def read_song_header(filepath: str) -> Dict[str, Any]:
         print("-" * 75)
         print(hexdump(header_data))
         
-        # Parse metadata
-        metadata, next_offset = parse_song_metadata(header_data)
+        metadata, offset = parse_song_metadata(header_data)
+        additional, offset = parse_additional_data(header_data, offset)
         
-        # Read section sizes array
-        section_sizes = []
-        difficulties_present = metadata['difficulties_present']['value']
-        if difficulties_present > 0:
-            section_sizes = list(struct.unpack(f'<{difficulties_present}Q', header_data[next_offset:next_offset + difficulties_present * 8]))
-            next_offset += difficulties_present * 8
+        # Read image sizes array
+        image_sizes = []
+        image_data = []
+        image_count = additional['image_count']['value']
+        image_sizes = []
+        if image_count > 0:
+            image_sizes = list(struct.unpack(f'<{image_count}Q', header_data[offset:offset + image_count * 8]))
+            offset += image_count * 8
         
         # Read instrument arrays
-        instrument_count = metadata['instrument_count']['value']
-        instrument_offsets = list(struct.unpack(f'<{instrument_count}Q', header_data[next_offset:next_offset + instrument_count * 8]))
-        next_offset += instrument_count * 8
+        instrument_count = additional['instrument_count']['value']
+        instrument_offsets = list(struct.unpack(f'<{instrument_count}Q', header_data[offset:offset + instrument_count * 8]))
+        offset += instrument_count * 8
         
-        instrument_sizes = list(struct.unpack(f'<{instrument_count}Q', header_data[next_offset:next_offset + instrument_count * 8]))
-        next_offset += instrument_count * 8
+        instrument_sizes = list(struct.unpack(f'<{instrument_count}Q', header_data[offset:offset + instrument_count * 8]))
+        offset += instrument_count * 8
         
         # Read and decompress chart data
-        chart_data_size = metadata['chart_data_size']['value']
+        chart_data_size = additional['chart_data_size']['value']
         compressed_chart = f.read(chart_data_size)
         chart_data = zlib.decompress(compressed_chart, wbits=-15)
+
         
-        print_metadata(metadata)
+        # Read and decompress all images
+        for size in image_sizes:
+          compressed_image = f.read(size)
+          image_data.append(zlib.decompress(compressed_image, wbits=-15))
+        
+        print_metadata(metadata, additional)
         
         return {
             'decompressed_size': decompressed_size,
             'compressed_size': compressed_size,
             'file_version': file_version,
             'metadata': metadata,
-            'next_offset': next_offset,
-            'section_sizes': section_sizes,
+            'additional': additional,
+            'next_offset': offset,
+            'image_sizes': image_sizes,
+            'image_data': image_data,
             'instrument_offsets': instrument_offsets,
             'instrument_sizes': instrument_sizes,
             'chart_data': chart_data
         }
 
 if __name__ == "__main__":
-    import sys
+    parser = argparse.ArgumentParser(description='Clone Hero Song File Parser')
+    parser.add_argument('input_file', help='Input song file')
+    parser.add_argument('-e', '--extract', help='Extract to directory')
+    args = parser.parse_args()
     
-    if len(sys.argv) != 2:
-        print("Usage: python script.py <path_to_song_file>")
-        sys.exit(1)
-        
-    filepath = Path(sys.argv[1])
+    filepath = Path(args.input_file)
     if not filepath.exists():
         print(f"Error: File {filepath} does not exist")
-        sys.exit(1)
+        exit(1)
         
     try:
         result = read_song_header(filepath)
@@ -309,7 +339,12 @@ if __name__ == "__main__":
         print(f"Compressed header size: {result['compressed_size']} bytes")
         print(f"Next section offset: {result['next_offset']}")
         print_arrays(result)
+        
+        if args.extract:
+            output_dir = Path(args.extract)
+            extract_all(result, output_dir)
+            print(f"\nExtracted to: {output_dir}")
+            
     except Exception as e:
         print(f"Error processing file: {e}")
-        sys.exit(1)
-
+        exit(1)
