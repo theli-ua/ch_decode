@@ -2,6 +2,12 @@ import struct
 from pathlib import Path
 import zlib
 from typing import Dict, Any, Tuple
+from enum import IntFlag
+
+class ContentFlags(IntFlag):
+    NONE = 0
+    ALBUM_ART = 1
+    BACKGROUND = 2
 
 def hexdump(data, offset=0, length=None, width=16):
     def printable(b):
@@ -37,10 +43,10 @@ def parse_song_metadata(header_data: bytes, offset: int = 4) -> Tuple[Dict[str, 
         ('chart_file', 'Chart File'),    # notes.mid
         ('song_name', 'Song Name'),      # Moonhunter
         ('artist', 'Artist'),            # Echoflesh
-        ('album', 'Album'),              # Moonhunter (Single)
-        ('genre', 'Genre'),              # Progressive Rock
-        ('charter', 'Charter'),          # Drihscol
-        ('year', 'Year'),                # 2020
+        ('album', 'Album'),             # Moonhunter (Single)
+        ('genre', 'Genre'),             # Progressive Rock
+        ('charter', 'Charter'),         # Drihscol
+        ('year', 'Year'),               # 2020
         ('additional_info', 'Additional Info')  # A spooky song...
     ]
     
@@ -84,9 +90,9 @@ def parse_song_metadata(header_data: bytes, offset: int = 4) -> Tuple[Dict[str, 
     # Preview start string
     length = struct.unpack('<I', header_data[offset:offset+4])[0]
     offset += 4
-    metadata['preview_start'] = {
+    metadata['source'] = {
         'value': header_data[offset:offset+length].decode('ascii'),
-        'display': 'Preview Start'
+        'display': 'Source'
     }
     offset += length
 
@@ -116,6 +122,36 @@ def parse_song_metadata(header_data: bytes, offset: int = 4) -> Tuple[Dict[str, 
     }
     offset += 16
 
+    # Read content flags
+    content_flags = ContentFlags(struct.unpack('B', header_data[offset:offset+1])[0])
+    metadata['content_flags'] = {
+        'value': content_flags,
+        'display': 'Content Flags'
+    }
+    offset += 1
+
+    # Read difficulties present count
+    metadata['difficulties_present'] = {
+        'value': struct.unpack('<I', header_data[offset:offset+4])[0],
+        'display': 'Difficulties Present'
+    }
+    offset += 4
+
+    # Read optional content offsets based on flags
+    if ContentFlags.ALBUM_ART in content_flags:
+        metadata['album_art_offset'] = {
+            'value': struct.unpack('<I', header_data[offset:offset+4])[0],
+            'display': 'Album Art Offset'
+        }
+        offset += 4
+
+    if ContentFlags.BACKGROUND in content_flags:
+        metadata['background_offset'] = {
+            'value': struct.unpack('<I', header_data[offset:offset+4])[0],
+            'display': 'Background Offset'
+        }
+        offset += 4
+
     return metadata, offset
 
 def print_metadata(metadata: Dict[str, Any]):
@@ -124,7 +160,7 @@ def print_metadata(metadata: Dict[str, Any]):
     
     # Print basic song info
     print("\nBasic Info:")
-    basic_fields = ['chart_file', 'song_name', 'artist', 'charter', 'album', 'genre', 'year', 'additional_info']
+    basic_fields = ['chart_file', 'song_name', 'artist', 'album', 'genre', 'charter', 'year', 'additional_info']
     for field in basic_fields:
         if field in metadata:
             print(f"{metadata[field]['display']:15}: {metadata[field]['value']}")
@@ -138,12 +174,25 @@ def print_metadata(metadata: Dict[str, Any]):
     # Print technical details
     print("\nTechnical Details:")
     song_length_ms = metadata['song_length']['value']
-    print(f"{'Song Length':15}: {song_length_ms} ms ({song_length_ms/1000:.2f} seconds)")
-    print(f"{'Preview Start':15}: {metadata['preview_start']['value']}")
-    print(f"{'Preview Length':15}: {metadata['preview_length']['value']} ms")
-    print(f"{'Resolution':15}: {metadata['resolution']['value']} ticks")
-    print(f"{'Unknown Int':15}: {metadata['unknown_int']['value']}")
-    print(f"{'Identifier':15}: {metadata['identifier']['value'].hex()}")
+    print(f"{metadata['song_length']['display']:15}: {song_length_ms} ms ({song_length_ms/1000:.2f} seconds)")
+    print(f"{metadata['source']['display']:15}: {metadata['source']['value']}")
+    print(f"{metadata['preview_length']['display']:15}: {metadata['preview_length']['value']} ms")
+    print(f"{metadata['resolution']['display']:15}: {metadata['resolution']['value']} ticks")
+    print(f"{metadata['unknown_int']['display']:15}: {metadata['unknown_int']['value']}")
+    print(f"{metadata['identifier']['display']:15}: {metadata['identifier']['value'].hex()}")
+
+    # Print content flags and offsets
+    print("\nContent Info:")
+    flags = metadata['content_flags']['value']
+    print(f"{metadata['content_flags']['display']:15}: {flags.name} ({flags.value})")
+    
+    if 'album_art_offset' in metadata:
+        print(f"{metadata['album_art_offset']['display']:15}: {metadata['album_art_offset']['value']}")
+    if 'background_offset' in metadata:
+        print(f"{metadata['background_offset']['display']:15}: {metadata['background_offset']['value']}")
+    
+    print(f"{metadata['difficulties_present']['display']:15}: {metadata['difficulties_present']['value']}")
+
 
 def read_song_header(filepath: str) -> Dict[str, Any]:
     with open(filepath, 'rb') as f:
@@ -193,7 +242,6 @@ if __name__ == "__main__":
         
     filepath = Path(sys.argv[1])
     if not filepath.exists():
-  
         print(f"Error: File {filepath} does not exist")
         sys.exit(1)
         
@@ -207,4 +255,3 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Error processing file: {e}")
         sys.exit(1)
-
