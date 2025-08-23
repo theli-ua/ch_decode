@@ -212,6 +212,16 @@ def print_metadata(metadata: Dict[str, Any]):
     
     print(f"{metadata['difficulties_present']['display']:15}: {metadata['difficulties_present']['value']}")
 
+def print_arrays(result: Dict[str, Any]):
+    print("\nSection Sizes:")
+    for i, size in enumerate(result['section_sizes']):
+        print(f"Section {i}: {size} bytes")
+    
+    print("\nInstrument Data:")
+    for i, (offset, size) in enumerate(zip(result['instrument_offsets'], result['instrument_sizes'])):
+        print(f"Instrument {i}: offset={offset}, size={size}")
+    
+    print(f"\nChart Data Size: {len(result['chart_data'])} bytes")
 def read_song_header(filepath: str) -> Dict[str, Any]:
     with open(filepath, 'rb') as f:
         # Read encryption keys
@@ -242,6 +252,27 @@ def read_song_header(filepath: str) -> Dict[str, Any]:
         
         # Parse metadata
         metadata, next_offset = parse_song_metadata(header_data)
+        
+        # Read section sizes array
+        section_sizes = []
+        difficulties_present = metadata['difficulties_present']['value']
+        if difficulties_present > 0:
+            section_sizes = list(struct.unpack(f'<{difficulties_present}Q', header_data[next_offset:next_offset + difficulties_present * 8]))
+            next_offset += difficulties_present * 8
+        
+        # Read instrument arrays
+        instrument_count = metadata['instrument_count']['value']
+        instrument_offsets = list(struct.unpack(f'<{instrument_count}Q', header_data[next_offset:next_offset + instrument_count * 8]))
+        next_offset += instrument_count * 8
+        
+        instrument_sizes = list(struct.unpack(f'<{instrument_count}Q', header_data[next_offset:next_offset + instrument_count * 8]))
+        next_offset += instrument_count * 8
+        
+        # Read and decompress chart data
+        chart_data_size = metadata['audio_data_size']['value']  # Rename this field to chart_data_size
+        compressed_chart = f.read(chart_data_size)
+        chart_data = zlib.decompress(compressed_chart, wbits=-15)
+        
         print_metadata(metadata)
         
         return {
@@ -249,9 +280,14 @@ def read_song_header(filepath: str) -> Dict[str, Any]:
             'compressed_size': compressed_size,
             'file_version': file_version,
             'metadata': metadata,
-            'next_offset': next_offset
+            'next_offset': next_offset,
+            'section_sizes': section_sizes,
+            'instrument_offsets': instrument_offsets,
+            'instrument_sizes': instrument_sizes,
+            'chart_data': chart_data
         }
 
+    
 if __name__ == "__main__":
     import sys
     
@@ -271,6 +307,7 @@ if __name__ == "__main__":
         print(f"Decompressed header size: {result['decompressed_size']} bytes")
         print(f"Compressed header size: {result['compressed_size']} bytes")
         print(f"Next section offset: {result['next_offset']}")
+        print_arrays(result)
     except Exception as e:
         print(f"Error processing file: {e}")
         sys.exit(1)
