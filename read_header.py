@@ -97,19 +97,19 @@ def parse_song_metadata(header_data: bytes, offset: int = 4) -> Tuple[Dict[str, 
     offset += length
 
     # More integers
-    metadata['preview_length'] = {
+    metadata['unknown_int1'] = {
         'value': struct.unpack('<I', header_data[offset:offset+4])[0],
-        'display': 'Preview Length'
+        'display': 'Unknown Int'
     }
     offset += 4
     
-    metadata['resolution'] = {
+    metadata['unknown_int2'] = {
         'value': struct.unpack('<I', header_data[offset:offset+4])[0],
-        'display': 'Resolution'
+        'display': 'Unknown Int'
     }
     offset += 4
-    
-    metadata['unknown_int'] = {
+
+    metadata['unknown_int3'] = {
         'value': struct.unpack('<I', header_data[offset:offset+4])[0],
         'display': 'Unknown Int'
     }
@@ -176,9 +176,9 @@ def print_metadata(metadata: Dict[str, Any]):
     song_length_ms = metadata['song_length']['value']
     print(f"{metadata['song_length']['display']:15}: {song_length_ms} ms ({song_length_ms/1000:.2f} seconds)")
     print(f"{metadata['source']['display']:15}: {metadata['source']['value']}")
-    print(f"{metadata['preview_length']['display']:15}: {metadata['preview_length']['value']} ms")
-    print(f"{metadata['resolution']['display']:15}: {metadata['resolution']['value']} ticks")
-    print(f"{metadata['unknown_int']['display']:15}: {metadata['unknown_int']['value']}")
+    print(f"{metadata['unknown_int1']['display']:15}: {metadata['unknown_int1']['value']}")
+    print(f"{metadata['unknown_int2']['display']:15}: {metadata['unknown_int2']['value']}")
+    print(f"{metadata['unknown_int3']['display']:15}: {metadata['unknown_int3']['value']}")
     print(f"{metadata['identifier']['display']:15}: {metadata['identifier']['value'].hex()}")
 
     # Print content flags and offsets
