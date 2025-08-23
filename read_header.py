@@ -26,17 +26,8 @@ def hexdump(data, offset=0, length=None, width=16):
     
     return '\n'.join(result)
 
-def swap_byte_order_u32(value: int) -> int:
-    # First swap bytes within each 16-bit word
-    value = ((value << 8) & 0xFF00FF00) | ((value >> 8) & 0x00FF00FF)
-    # Then swap 16-bit words
-    return (value << 16) | (value >> 16)
-
-def swap_byte_order_u64(value: int) -> int:
-    # Split into two 32-bit values, swap each, then combine
-    low = swap_byte_order_u32(value & 0xFFFFFFFF)
-    high = swap_byte_order_u32(value >> 32)
-    return (low << 32) | high
+def swap_byte_order_u64(value):
+    return struct.unpack("<Q", struct.pack(">Q", value))[0]
 
 def transform_key(input_key, generator_key):
     generator_key &= 0x1FFFFFFFFF  # 37 bits mask
