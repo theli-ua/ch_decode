@@ -87,7 +87,7 @@ def parse_song_metadata(header_data: bytes, offset: int = 4) -> Tuple[Dict[str, 
     }
     offset += 4
 
-    # Preview start string
+    # Read source string
     length = struct.unpack('<I', header_data[offset:offset+4])[0]
     offset += 4
     metadata['source'] = {
@@ -96,22 +96,22 @@ def parse_song_metadata(header_data: bytes, offset: int = 4) -> Tuple[Dict[str, 
     }
     offset += length
 
-    # More integers
+    # Unknown integers
     metadata['unknown_int1'] = {
         'value': struct.unpack('<I', header_data[offset:offset+4])[0],
-        'display': 'Unknown Int'
+        'display': 'Unknown Int 1'
     }
     offset += 4
     
     metadata['unknown_int2'] = {
         'value': struct.unpack('<I', header_data[offset:offset+4])[0],
-        'display': 'Unknown Int'
+        'display': 'Unknown Int 2'
     }
     offset += 4
 
     metadata['unknown_int3'] = {
         'value': struct.unpack('<I', header_data[offset:offset+4])[0],
-        'display': 'Unknown Int'
+        'display': 'Unknown Int 3'
     }
     offset += 4
 
@@ -122,7 +122,21 @@ def parse_song_metadata(header_data: bytes, offset: int = 4) -> Tuple[Dict[str, 
     }
     offset += 16
 
-    # Read content flags
+    # Read 8-byte long (audio data size)
+    metadata['audio_data_size'] = {
+        'value': struct.unpack('<Q', header_data[offset:offset+8])[0],
+        'display': 'Audio Data Size'
+    }
+    offset += 8
+
+    # Read 4-byte int (instrument count)
+    metadata['instrument_count'] = {
+        'value': struct.unpack('<I', header_data[offset:offset+4])[0],
+        'display': 'Instrument Count'
+    }
+    offset += 4
+
+    # Read content flags (1 byte)
     content_flags = ContentFlags(struct.unpack('B', header_data[offset:offset+1])[0])
     metadata['content_flags'] = {
         'value': content_flags,
@@ -130,7 +144,7 @@ def parse_song_metadata(header_data: bytes, offset: int = 4) -> Tuple[Dict[str, 
     }
     offset += 1
 
-    # Read difficulties present count
+    # Read difficulties present count (4 bytes)
     metadata['difficulties_present'] = {
         'value': struct.unpack('<I', header_data[offset:offset+4])[0],
         'display': 'Difficulties Present'
@@ -180,6 +194,11 @@ def print_metadata(metadata: Dict[str, Any]):
     print(f"{metadata['unknown_int2']['display']:15}: {metadata['unknown_int2']['value']}")
     print(f"{metadata['unknown_int3']['display']:15}: {metadata['unknown_int3']['value']}")
     print(f"{metadata['identifier']['display']:15}: {metadata['identifier']['value'].hex()}")
+    
+    # Print audio and instrument info
+    print("\nAudio & Instrument Info:")
+    print(f"{metadata['audio_data_size']['display']:15}: {metadata['audio_data_size']['value']} bytes")
+    print(f"{metadata['instrument_count']['display']:15}: {metadata['instrument_count']['value']}")
 
     # Print content flags and offsets
     print("\nContent Info:")
@@ -192,7 +211,6 @@ def print_metadata(metadata: Dict[str, Any]):
         print(f"{metadata['background_offset']['display']:15}: {metadata['background_offset']['value']}")
     
     print(f"{metadata['difficulties_present']['display']:15}: {metadata['difficulties_present']['value']}")
-
 
 def read_song_header(filepath: str) -> Dict[str, Any]:
     with open(filepath, 'rb') as f:
@@ -255,3 +273,4 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Error processing file: {e}")
         sys.exit(1)
+
