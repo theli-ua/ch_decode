@@ -97,6 +97,7 @@ def parse_song_metadata(header_data: bytes, offset: int = 4) -> Tuple[Dict[str, 
     offset += length
 
     # Unknown integers
+  
     metadata['unknown_int1'] = {
         'value': struct.unpack('<I', header_data[offset:offset+4])[0],
         'display': 'Unknown Int 1'
@@ -122,10 +123,10 @@ def parse_song_metadata(header_data: bytes, offset: int = 4) -> Tuple[Dict[str, 
     }
     offset += 16
 
-    # Read 8-byte long (audio data size)
-    metadata['audio_data_size'] = {
+    # Read 8-byte long (chart data size)
+    metadata['chart_data_size'] = {
         'value': struct.unpack('<Q', header_data[offset:offset+8])[0],
-        'display': 'Audio Data Size'
+        'display': 'Chart Data Size'
     }
     offset += 8
 
@@ -195,9 +196,9 @@ def print_metadata(metadata: Dict[str, Any]):
     print(f"{metadata['unknown_int3']['display']:15}: {metadata['unknown_int3']['value']}")
     print(f"{metadata['identifier']['display']:15}: {metadata['identifier']['value'].hex()}")
     
-    # Print audio and instrument info
-    print("\nAudio & Instrument Info:")
-    print(f"{metadata['audio_data_size']['display']:15}: {metadata['audio_data_size']['value']} bytes")
+    # Print chart and instrument info
+    print("\nChart & Instrument Info:")
+    print(f"{metadata['chart_data_size']['display']:15}: {metadata['chart_data_size']['value']} bytes")
     print(f"{metadata['instrument_count']['display']:15}: {metadata['instrument_count']['value']}")
 
     # Print content flags and offsets
@@ -222,6 +223,7 @@ def print_arrays(result: Dict[str, Any]):
         print(f"Instrument {i}: offset={offset}, size={size}")
     
     print(f"\nChart Data Size: {len(result['chart_data'])} bytes")
+
 def read_song_header(filepath: str) -> Dict[str, Any]:
     with open(filepath, 'rb') as f:
         # Read encryption keys
@@ -269,7 +271,7 @@ def read_song_header(filepath: str) -> Dict[str, Any]:
         next_offset += instrument_count * 8
         
         # Read and decompress chart data
-        chart_data_size = metadata['audio_data_size']['value']  # Rename this field to chart_data_size
+        chart_data_size = metadata['chart_data_size']['value']
         compressed_chart = f.read(chart_data_size)
         chart_data = zlib.decompress(compressed_chart, wbits=-15)
         
@@ -287,7 +289,6 @@ def read_song_header(filepath: str) -> Dict[str, Any]:
             'chart_data': chart_data
         }
 
-    
 if __name__ == "__main__":
     import sys
     
@@ -311,3 +312,4 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Error processing file: {e}")
         sys.exit(1)
+
