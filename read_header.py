@@ -26,13 +26,22 @@ def hexdump(data, offset=0, length=None, width=16):
     
     return '\n'.join(result)
 
-def swap_byte_order_u64(value):
-    return struct.unpack("<Q", struct.pack(">Q", value))[0]
+def swap_byte_order_u32(value: int) -> int:
+    # First swap bytes within each 16-bit word
+    value = ((value << 8) & 0xFF00FF00) | ((value >> 8) & 0x00FF00FF)
+    # Then swap 16-bit words
+    return (value << 16) | (value >> 16)
+
+def swap_byte_order_u64(value: int) -> int:
+    # Split into two 32-bit values, swap each, then combine
+    low = swap_byte_order_u32(value & 0xFFFFFFFF)
+    high = swap_byte_order_u32(value >> 32)
+    return (low << 32) | high
 
 def transform_key(input_key, generator_key):
     generator_key &= 0x1FFFFFFFFF  # 37 bits mask
     intermediate = (input_key ^ generator_key) * 50912195 % 0x2000000000
-    mixing_mask = (intermediate ^ (intermediate >> 7)) & 0x54E6E5
+    mixing_mask = (intermediate ^ (intermediate >> 7)) & 0x550055
     return (intermediate ^ mixing_mask ^ (mixing_mask << 7)) - 1
 
 def parse_song_metadata(header_data: bytes, offset: int = 4) -> Tuple[Dict[str, Any], int]:
@@ -216,16 +225,17 @@ def read_song_header(filepath: str) -> Dict[str, Any]:
     with open(filepath, 'rb') as f:
         # Read encryption keys
         key1 = swap_byte_order_u64(struct.unpack('<Q', f.read(8))[0])
-        key2 = transform_key(struct.unpack('<Q', f.read(8))[0], key1)
+        compressed_size = transform_key(struct.unpack('<Q', f.read(8))[0], key1)
         
-        print(f"Header size (key2): {key2}")
+        print(f"Header size (key2): {compressed_size}")
         
         # Read compressed header
-        compressed_header = f.read(key2)
+        compressed_header = f.read(compressed_size)
         
         # Decompress header using raw deflate
         decompressor = zlib.decompressobj(-15)
         header_data = decompressor.decompress(compressed_header)
+        decompressed_size = len(header_data)
         
         # Read file version (uint32)
         file_version = struct.unpack('<I', header_data[:4])[0]
@@ -244,9 +254,9 @@ def read_song_header(filepath: str) -> Dict[str, Any]:
         print_metadata(metadata)
         
         return {
-            'header_size': key2,
+            'decompressed_size': decompressed_size,
+            'compressed_size': compressed_size,
             'file_version': file_version,
-            'decompressed_size': len(header_data),
             'metadata': metadata,
             'next_offset': next_offset
         }
@@ -267,10 +277,9 @@ if __name__ == "__main__":
         result = read_song_header(filepath)
         print("\nSummary:")
         print("-" * 75)
-        print(f"Compressed header size: {result['header_size']} bytes")
         print(f"Decompressed header size: {result['decompressed_size']} bytes")
+        print(f"Compressed header size: {result['compressed_size']} bytes")
         print(f"Next section offset: {result['next_offset']}")
     except Exception as e:
         print(f"Error processing file: {e}")
         sys.exit(1)
-
