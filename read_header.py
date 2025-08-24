@@ -240,12 +240,6 @@ def extract_audio_data(filepath: str, instrument_offsets: List[int], instrument_
             if len(encrypted_audio) < audio_data_size:
                 print(f"Warning: Could only read {len(encrypted_audio)} of {audio_data_size} bytes")
             
-            # Save encrypted data for debugging
-            encrypted_path = output_dir / f"{instrument_name}_encrypted.bin"
-            with open(encrypted_path, 'wb') as ef:
-                ef.write(encrypted_audio)
-            print(f"  Saved encrypted data: {encrypted_path}")
-            
             # Decrypt the audio data
             print("  Decrypting audio data...")
             decrypted_audio = decrypt_audio_data(
@@ -311,7 +305,6 @@ def extract_audio_data(filepath: str, instrument_offsets: List[int], instrument_
                 'instrument_name': instrument_name,
                 'instrument_type': header['instrument_type'],
                 'size': len(decrypted_audio),
-                'encrypted_path': encrypted_path,
                 'decrypted_path': final_path
             })
             
