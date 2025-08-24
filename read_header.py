@@ -88,15 +88,13 @@ def parse_audio_header(data):
     if len(data) < 32:
         raise ValueError("Audio header must be at least 32 bytes")
     
-    instrument_type = struct.unpack('<I', data[0:4])[0]
-    reserved = struct.unpack('<I', data[4:8])[0]
+    instrument_type = struct.unpack('<Q', data[0:8])[0]
     encryption_key1 = struct.unpack('<Q', data[8:16])[0]
     encryption_key2 = struct.unpack('<Q', data[16:24])[0]
     audio_data_size = struct.unpack('<Q', data[24:32])[0] & 0x7FFFFFFFFFFFFFFF  # Clear sign bit
     
     return {
         'instrument_type': instrument_type,
-        'reserved': reserved,
         'encryption_key1': encryption_key1,
         'encryption_key2': encryption_key2,
         'audio_data_size': audio_data_size
@@ -120,7 +118,7 @@ def get_instrument_name(instrument_type):
         12: 'song',
         13: 'crowd'
     }
-    return instrument_names.get(instrument_type, f'unknown_{instrument_type}')
+    return instrument_names.get(instrument_type - 1, f'unknown_{instrument_type}')
 
 def aes_encrypt_block(key, plaintext):
     """Encrypt a single AES block using available crypto library"""
@@ -327,7 +325,7 @@ def parse_song_metadata(header_data: bytes, offset: int = 4) -> Tuple[Dict[str, 
         ('genre', 'Genre'),
         ('charter', 'Charter'),
         ('year', 'Year'),
-        ('additional_info', 'Additional Info')
+        ('additional_info', 'Loading Phrase')
     ]
     
     for field, display_name in string_fields:
@@ -443,6 +441,10 @@ def write_song_ini(metadata: Dict[str, Any], output_dir: Path):
         f.write(f"charter = {metadata['charter']['value']}\n")
         f.write(f"year = {metadata['year']['value']}\n")
         f.write(f"song_length = {metadata['song_length']['value']}\n")
+        
+        # Write loading phrase if present
+        if metadata['additional_info']['value']:
+            f.write(f"loading_phrase = {metadata['additional_info']['value']}\n")
         
         # Write difficulty values
         for field, data in metadata.items():
