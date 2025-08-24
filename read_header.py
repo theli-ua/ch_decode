@@ -118,7 +118,7 @@ def get_instrument_name(instrument_type):
         12: 'song',
         13: 'crowd'
     }
-    return instrument_names.get(instrument_type - 1, f'unknown_{instrument_type}')
+    return instrument_names.get(instrument_type, f'unknown_{instrument_type}')
 
 def aes_encrypt_block(key, plaintext):
     """Encrypt a single AES block using available crypto library"""
@@ -445,6 +445,10 @@ def write_song_ini(metadata: Dict[str, Any], output_dir: Path):
         # Write loading phrase if present
         if metadata['additional_info']['value']:
             f.write(f"loading_phrase = {metadata['additional_info']['value']}\n")
+        
+        # Write icon (source) if present
+        if metadata['source']['value']:
+            f.write(f"icon = {metadata['source']['value']}\n")
         
         # Write difficulty values
         for field, data in metadata.items():
